@@ -1,0 +1,385 @@
+#!/usr/bin/env node
+
+/**
+ * 
+ * Solidity smart contract scanner.
+ * For any suggestions please contact me at andrei.dimitrief.jianu(at)gmail.com
+ * 
+ * The MIT License (MIT)
+ * 
+ * Copyright (c) 2019 Andrei Dimitrief-Jianu
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ * 
+ */
+
+const commander = require('commander');
+const fileSystem = require('fs');
+
+const printUtils = require('./utils/print-utils.js');
+const statusUtils = require('./utils/status-utils.js');
+
+const SearchParameters = require('./utils/search-parameters.js');
+const SearchUtils = require('./utils/search-utils.js');
+
+function validateCommandLine(commandLine)
+{
+    // validate input parameters 
+    if (!commandLine.port)
+    {
+        printUtils.printError('option \'--port <port>\' missing');
+        process.exit();
+    }
+
+    if (!commandLine.blockStart)
+    {
+        printUtils.printError('option \'--block-start <block>\' missing');
+        process.exit();
+    }
+    if (commandLine.blockStart > commandLine.blockEnd)
+    {
+        printUtils.printError('block start cannot be greater than block end');
+        process.exit();
+    }
+
+    if (!commandLine.query && !commandLine.queryFile)
+    {
+        printUtils.printError('option \'--query <query>\' or \'--query-file <file>\' missing');
+        process.exit();
+    }
+    if (commandLine.query && commandLine.queryFile)
+    {
+        printUtils.printError('both \'--query <query>\' or \'--query-file <file>\' specified');
+        process.exit();
+    }
+
+    if (!commandLine.searchCreation && !commandLine.searchRuntime)
+    {
+        commandLine.searchRuntime = true;
+    }
+
+    let query = commandLine.query;
+    if (!query)
+    {
+        query = fileSystem.readFileSync(commandLine.queryFile, 'utf8').replace(/\n/g, '');
+    }
+
+    let searchCreation = false;
+    if (commandLine.searchCreation)
+    {
+        searchCreation = true;
+    }
+
+    let searchRuntime = false;
+    if (commandLine.searchRuntime)
+    {
+        searchRuntime = true;
+    }
+
+    let balance = false;
+    if (commandLine.balance)
+    {
+        balance = true;
+    }
+
+    let status = false;
+    if (commandLine.status)
+    {
+        status = true;
+    }
+
+    let verbose = false;
+    if (commandLine.verbose)
+    {
+        verbose = true;
+    }
+
+    let summary = false;
+    if (commandLine.summary)
+    {
+        summary = true;
+    }
+
+    // set search parameters
+    let searchParameters = new SearchParameters();
+
+    searchParameters.client = commandLine.client;
+    searchParameters.port = commandLine.port;
+
+    searchParameters.blockStart = commandLine.blockStart;
+    searchParameters.blockEnd = commandLine.blockEnd;
+
+    searchParameters.query = query;
+    searchParameters.searchCreation = searchCreation;
+    searchParameters.searchRuntime = searchRuntime;
+    searchParameters.balance = balance;
+
+    searchParameters.outputFile = commandLine.outputFile;
+    
+    searchParameters.status = status;
+    searchParameters.verbose = verbose;
+    searchParameters.summary = summary;
+
+    // display the search parameters
+    printUtils.printNewLine();
+    printUtils.printToConsole('client', 26, searchParameters.client);
+    printUtils.printToConsole('port', 26, searchParameters.port);
+    
+    printUtils.printToConsole('block start', 26, searchParameters.blockStart);
+    if (searchParameters.blockEnd)
+    {
+        printUtils.printToConsole('block end', 26, searchParameters.blockEnd);
+    }
+
+    printUtils.printToConsole('query', 26, searchParameters.query);
+
+    if (searchParameters.balance)
+    {
+        printUtils.printToConsole('only contracts with non-zero balance', 1, '');
+    }
+    
+    printUtils.printToConsole('search creation bytecode', 26, searchParameters.searchCreation);
+    printUtils.printToConsole('search runtime bytecode', 26, searchParameters.searchRuntime);
+
+    if (searchParameters.status)
+    {
+        printUtils.printToConsole('displays status during scan', 1, '');
+    }
+    if (searchParameters.summary)
+    {
+        printUtils.printToConsole('displays summary at the end of the scan', 1, '');
+    }
+
+    if (searchParameters.output)
+    {
+        printUtils.printToConsole('output file', 26, searchParameters.output);
+    }
+    printUtils.printNewLine();
+
+    return searchParameters;
+}
+
+async function main(commandLine)
+{
+    let searchParameters = validateCommandLine(commandLine);
+    let searchUtils = new SearchUtils(searchParameters);
+    searchUtils.setup();
+
+    console.time('scan');
+
+    let networkState = await statusUtils.retrieveNetworkState(searchParameters.client, searchParameters.port)
+    await statusUtils.printNetworkStatus(networkState);
+
+    let startBlock = searchParameters.blockStart;
+    let endBlock = searchParameters.blockEnd;
+    if (!searchParameters.blockEnd)
+    {
+        endBlock = networkState.blockNumber;
+    }
+
+    printUtils.printNewLine();
+    printUtils.printToConsole('start block', 20, startBlock);
+    printUtils.printToConsole('end block', 20, endBlock);
+    printUtils.printToConsole('query', 20, searchUtils.query);
+    printUtils.printToConsole('hexaized query', 20, searchUtils.hexaizedQuery);
+    printUtils.printNewLine();
+
+    if (searchParameters.outputFile)
+    {
+        fileSystem.writeFileSync(
+            searchParameters.outputFile, 
+            JSON.stringify([]));
+    }
+
+    for (let currentBlock = startBlock; currentBlock <= endBlock; currentBlock++)
+    {
+        let block = await networkState.provider.getBlock(currentBlock);
+
+        if (!block)
+        {
+            if (searchParameters.status)
+            {
+                printUtils.printToConsole('invalid block', 20, currentBlock);
+            }    
+        }
+        else
+        {
+            if (searchParameters.status)
+            {
+                printUtils.printToConsole('current block', 20, currentBlock);
+            }
+            
+            let transactionCount = block.transactions.length;
+            if (0 != transactionCount)
+            {
+                for (let transactionIndex = 0; transactionIndex < transactionCount; transactionIndex++)
+                {
+                    let transactionHash = block.transactions[transactionIndex];
+                    let transaction = await networkState.provider.getTransaction(transactionHash);
+                    
+                    if (searchParameters.verbose)
+                    {
+                        console.log('transaction:');
+                        console.log(transaction);
+                    }
+    
+                    if (!transaction.to)
+                    {
+                        let transactionReceipt = await networkState.provider.getTransactionReceipt(transactionHash);
+    
+                        let blockNumber = transactionReceipt.blockNumber;
+                        let contractAddress = transactionReceipt.contractAddress;
+                        let contractOwner = transactionReceipt.from;
+                        let transactionNonce = transaction.nonce;
+                        let transactionValue = transaction.value;
+                        let transactionData = transaction.data;
+    
+                        let contractBalance = await networkState.provider.getBalance(contractAddress);
+                        let contractBytecode = await networkState.provider.getCode(contractAddress);
+
+                        if (0 != contractBalance || (0 == contractBalance && !searchParameters.balance))
+                        {
+                            if (searchParameters.verbose)
+                            {
+                                console.log('transaction receipt:');
+                                console.log(transactionReceipt);
+                            }
+
+                            let matchTransactionData = false;
+                            if (searchParameters.searchCreation)
+                            {
+                                if (!transactionData || 0 == transactionData.length || 0 == transactionData.replace(/0[xX]/i, '').length)
+                                {
+                                    console.log('cannot retrieve transaction data from provider, consider searching runtime');
+                                }
+                                matchTransactionData = searchUtils.foundMatch(transactionData);
+                            }
+
+                            let matchContractBytecode = false;
+                            if (searchParameters.searchRuntime)
+                            {
+                                if (!contractBytecode || 0 == contractBytecode.length || 0 == contractBytecode.replace(/0[xX]/i, '').length)
+                                {
+                                    console.log('cannot retrieve contract bytecode from provider, consider searching creation');
+                                }
+                                matchContractBytecode = searchUtils.foundMatch(contractBytecode);
+                            }
+
+                            if (matchTransactionData || matchContractBytecode)
+                            {
+                                printUtils.printNewLine();
+                                printUtils.printToConsole('match ---------------------------------------', 1, '');
+                                printUtils.printToConsole('block number', 20, blockNumber);
+                                printUtils.printToConsole('transaction hash', 20, transactionHash);
+                                printUtils.printToConsole('contract address', 20, contractAddress);
+                                printUtils.printToConsole('owner address', 20, contractOwner);
+                                printUtils.printToConsole('transaction nonce', 20, transactionNonce);
+                                printUtils.printToConsole('transaction value', 20, transactionValue);
+                                printUtils.printToConsole('contract balance', 20, contractBalance);
+                                if (searchParameters.verbose)
+                                {
+                                    printUtils.printToConsole('transaction data', 20, transactionData);
+                                    printUtils.printToConsole('contract bytecode', 20, contractBytecode);
+                                }
+        
+                                if (searchParameters.outputFile)
+                                {
+                                    let outputJSON = JSON.parse(fileSystem.readFileSync(searchParameters.outputFile));
+                                    outputJSON.push(
+                                        {
+                                            'blockNumber': blockNumber,
+                                            'transactionHash': transactionHash,
+                                            'contractAddress': contractAddress,
+                                            'ownerAddress': contractOwner,
+                                            'transactionNonce': transactionNonce,
+                                            'transactionValue': transactionValue.toString(),
+                                            'contractBalance': contractBalance.toString(),
+                                            'transactionData': transactionData,
+                                            'contractBytecode': contractBytecode
+                                        });
+        
+                                    fileSystem.writeFileSync(
+                                        searchParameters.outputFile, 
+                                        JSON.stringify(outputJSON));
+                                }    
+                            }                    
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if (searchParameters.summary)
+    {
+        if (!searchParameters.outputFile)
+        {
+            printUtils.printNewLine();
+            printUtils.printToConsole('cannot display summary: no output file specified.', 1, '');
+        }
+        else
+        {
+            printUtils.printNewLine();
+            printUtils.printToConsole('scan summary --------------------------------', 1, '');
+    
+            let outputJSON = JSON.parse(fileSystem.readFileSync(searchParameters.outputFile));
+            if (0 == outputJSON.length)
+            {
+                printUtils.printNewLine();
+                printUtils.printToConsole('no smart contracts matched the search query', 1, '');
+            }
+            else
+            {
+                outputJSON.forEach((match) => 
+                {
+                    printUtils.printNewLine();
+                    printUtils.printToConsole('contract', 20, match.contractAddress);
+                    printUtils.printToConsole('owner', 20, match.ownerAddress);
+                    printUtils.printToConsole('block number', 20, match.blockNumber);
+                    printUtils.printToConsole('transaction hash', 20, match.transactionHash);
+                    printUtils.printToConsole('balance', 20, match.contractBalance);
+                });
+            }
+        }
+    }
+
+    printUtils.printNewLine();
+    printUtils.printToConsole('done.', 1, '');
+    console.timeEnd('scan');
+    printUtils.printNewLine();
+}
+
+commander
+    .version('0.1.0')
+    .option('--client <client>', 'ethereum client', 'localhost')
+    .option('--port <port>', 'ethereum client rpc port', parseInt)
+    .option('--block-start <block>', 'block number scan start', parseInt)
+    .option('--block-end <block>', 'block number scan end', parseInt)
+    .option('--query <query>', 'query to execute')
+    .option('--query-file <file>', 'file with query to execute')
+    .option('--search-creation', 'search the data on the creation transaction')
+    .option('--search-runtime', 'search the contract bytecode')
+    .option('--balance', 'search only for contracts with non-zero balance')
+    .option('--output-file <file>', 'file with list of contracts that matched the search criteria')
+    .option('--status', 'displays status info during the scan')
+    .option('--verbose', 'displays contract data during the scan')
+    .option('--summary', 'displays summary at the end of the scan')
+    .parse(process.argv);
+
+main(commander);

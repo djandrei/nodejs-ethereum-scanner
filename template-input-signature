@@ -1,0 +1,1 @@
+( <<kill(address)>> || <<selfdestruct(address)>> ) && <<withdraw(address,uint256)>>
