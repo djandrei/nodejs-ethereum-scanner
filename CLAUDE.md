@@ -20,6 +20,24 @@ Run the scanner:
 
 `--delay <ms>` sets the pause between block iterations (default: 1000ms).
 
+`--on-match <command>` runs a shell command on each match. Use `{field}` tokens for substitution:
+```
+./scanner ... --on-match 'echo {contractAddress} {blockNumber}'
+```
+Available tokens: `{blockNumber}`, `{transactionHash}`, `{contractAddress}`, `{ownerAddress}`, `{transactionNonce}`, `{transactionValue}`, `{contractBalance}`, `{transactionData}`, `{contractBytecode}`.
+
+`--action-script <file>` loads a JS module and calls its default export on each match:
+```
+./scanner ... --action-script ./my-action.js
+```
+```js
+// my-action.js
+module.exports = async function(match, provider) {
+    // match has the same fields as the {field} tokens above
+    // provider is the live ethers.providers.JsonRpcProvider instance
+};
+```
+
 Run the hex utility (generates function signatures/keccak256 hashes):
 ```
 ./hex --input 'transfer(address,uint256)'
@@ -58,13 +76,15 @@ scanner CLI
       → provider.getCode() / transaction.data for bytecode
       → searchUtils.foundMatch(bytecode)
       → print match + optionally append to JSON output file
+      → optionally run --on-match shell command
+      → optionally call --action-script module function
 ```
 
 ### `utils/` modules
 
 | File | Purpose |
 |---|---|
-| `search-parameters.js` | Plain data object holding all scan configuration (url, delay, block range, query, flags) |
+| `search-parameters.js` | Plain data object holding all scan configuration (url, delay, block range, query, on-match action flags) |
 | `search-utils.js` | Query parsing and bytecode matching logic |
 | `network-state.js` | Plain data object holding provider, signer, and network metadata |
 | `status-utils.js` | Connects to the RPC node via URL, populates `NetworkState`, prints network/contract status; signer setup is optional and skipped gracefully for read-only public providers |

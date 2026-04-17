@@ -31,6 +31,8 @@
 
 const commander = require('commander');
 const fileSystem = require('fs');
+const path = require('path');
+const childProcess = require('child_process');
 
 const printUtils = require('./utils/print-utils.js');
 const statusUtils = require('./utils/status-utils.js');
@@ -116,6 +118,12 @@ function validateCommandLine(commandLine)
         summary = true;
     }
 
+    if (commandLine.actionScript && !fileSystem.existsSync(commandLine.actionScript))
+    {
+        printUtils.printError('action script file not found: ' + commandLine.actionScript);
+        process.exit();
+    }
+
     // set search parameters
     let searchParameters = new SearchParameters();
 
@@ -133,7 +141,12 @@ function validateCommandLine(commandLine)
 
     searchParameters.delay = commandLine.delay !== undefined ? commandLine.delay : 1000;
     searchParameters.outputFile = commandLine.outputFile;
-    
+
+    searchParameters.onMatch = commandLine.onMatch || null;
+    searchParameters.actionScript = commandLine.actionScript
+        ? path.resolve(commandLine.actionScript)
+        : null;
+
     searchParameters.status = status;
     searchParameters.verbose = verbose;
     searchParameters.summary = summary;
@@ -172,6 +185,14 @@ function validateCommandLine(commandLine)
     {
         printUtils.printToConsole('output file', 26, searchParameters.output);
     }
+    if (searchParameters.onMatch)
+    {
+        printUtils.printToConsole('on-match command', 26, searchParameters.onMatch);
+    }
+    if (searchParameters.actionScript)
+    {
+        printUtils.printToConsole('action script', 26, searchParameters.actionScript);
+    }
     printUtils.printNewLine();
 
     return searchParameters;
@@ -182,6 +203,17 @@ async function main(commandLine)
     let searchParameters = validateCommandLine(commandLine);
     let searchUtils = new SearchUtils(searchParameters);
     searchUtils.setup();
+
+    let actionFn = null;
+    if (searchParameters.actionScript)
+    {
+        actionFn = require(searchParameters.actionScript);
+        if (typeof actionFn !== 'function')
+        {
+            printUtils.printError('action script must export a function');
+            process.exit();
+        }
+    }
 
     console.time('scan');
 
@@ -301,26 +333,46 @@ async function main(commandLine)
                                     printUtils.printToConsole('contract bytecode', 20, contractBytecode);
                                 }
         
+                                const matchData = {
+                                    blockNumber,
+                                    transactionHash,
+                                    contractAddress,
+                                    ownerAddress: contractOwner,
+                                    transactionNonce,
+                                    transactionValue: transactionValue.toString(),
+                                    contractBalance: contractBalance.toString(),
+                                    transactionData,
+                                    contractBytecode
+                                };
+
                                 if (searchParameters.outputFile)
                                 {
                                     let outputJSON = JSON.parse(fileSystem.readFileSync(searchParameters.outputFile));
-                                    outputJSON.push(
-                                        {
-                                            'blockNumber': blockNumber,
-                                            'transactionHash': transactionHash,
-                                            'contractAddress': contractAddress,
-                                            'ownerAddress': contractOwner,
-                                            'transactionNonce': transactionNonce,
-                                            'transactionValue': transactionValue.toString(),
-                                            'contractBalance': contractBalance.toString(),
-                                            'transactionData': transactionData,
-                                            'contractBytecode': contractBytecode
-                                        });
-        
+                                    outputJSON.push(matchData);
                                     fileSystem.writeFileSync(
-                                        searchParameters.outputFile, 
+                                        searchParameters.outputFile,
                                         JSON.stringify(outputJSON));
-                                }    
+                                }
+
+                                if (searchParameters.onMatch)
+                                {
+                                    const cmd = searchParameters.onMatch.replace(
+                                        /\{(\w+)\}/g,
+                                        (_, key) => (matchData[key] !== undefined ? String(matchData[key]) : '')
+                                    );
+                                    childProcess.exec(cmd, (err, stdout, stderr) => {
+                                        if (err) console.error('on-match error:', err.message);
+                                        if (stdout) process.stdout.write(stdout);
+                                        if (stderr) process.stderr.write(stderr);
+                                    });
+                                }
+
+                                if (actionFn)
+                                {
+                                    actionFn(matchData, networkState.provider).catch(err => {
+                                        console.error('action script error:', err.message);
+                                    });
+                                }
                             }                    
                         }
                     }
@@ -385,6 +437,8 @@ commander
     .option('--status', 'displays status info during the scan')
     .option('--verbose', 'displays contract data during the scan')
     .option('--summary', 'displays summary at the end of the scan')
+    .option('--on-match <command>', 'shell command to run on each match; use {field} tokens')
+    .option('--action-script <file>', 'JS module exporting async function onMatch(match, provider)')
     .parse(process.argv);
 
 main(commander);

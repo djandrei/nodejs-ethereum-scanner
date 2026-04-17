@@ -45,6 +45,9 @@ function SearchParameters()
 
     this.outputFile = null;
 
+    this.onMatch = null;
+    this.actionScript = null;
+
     this.status = null;
     this.verbose = null;
     this.summary = null;
