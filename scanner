@@ -41,9 +41,9 @@ const SearchUtils = require('./utils/search-utils.js');
 function validateCommandLine(commandLine)
 {
     // validate input parameters 
-    if (!commandLine.port)
+    if (!commandLine.port && !commandLine.url)
     {
-        printUtils.printError('option \'--port <port>\' missing');
+        printUtils.printError('option \'--port <port>\' or \'--url <url>\' missing');
         process.exit();
     }
 
@@ -121,6 +121,7 @@ function validateCommandLine(commandLine)
 
     searchParameters.client = commandLine.client;
     searchParameters.port = commandLine.port;
+    searchParameters.url = commandLine.url || 'http://' + commandLine.client + ':' + commandLine.port;
 
     searchParameters.blockStart = commandLine.blockStart;
     searchParameters.blockEnd = commandLine.blockEnd;
@@ -130,6 +131,7 @@ function validateCommandLine(commandLine)
     searchParameters.searchRuntime = searchRuntime;
     searchParameters.balance = balance;
 
+    searchParameters.delay = commandLine.delay !== undefined ? commandLine.delay : 1000;
     searchParameters.outputFile = commandLine.outputFile;
     
     searchParameters.status = status;
@@ -138,8 +140,8 @@ function validateCommandLine(commandLine)
 
     // display the search parameters
     printUtils.printNewLine();
-    printUtils.printToConsole('client', 26, searchParameters.client);
-    printUtils.printToConsole('port', 26, searchParameters.port);
+    printUtils.printToConsole('url', 26, searchParameters.url);
+    printUtils.printToConsole('delay (ms)', 26, searchParameters.delay);
     
     printUtils.printToConsole('block start', 26, searchParameters.blockStart);
     if (searchParameters.blockEnd)
@@ -183,7 +185,7 @@ async function main(commandLine)
 
     console.time('scan');
 
-    let networkState = await statusUtils.retrieveNetworkState(searchParameters.client, searchParameters.port)
+    let networkState = await statusUtils.retrieveNetworkState(searchParameters.url)
     await statusUtils.printNetworkStatus(networkState);
 
     let startBlock = searchParameters.blockStart;
@@ -209,6 +211,7 @@ async function main(commandLine)
 
     for (let currentBlock = startBlock; currentBlock <= endBlock; currentBlock++)
     {
+        await new Promise(resolve => setTimeout(resolve, searchParameters.delay));
         let block = await networkState.provider.getBlock(currentBlock);
 
         if (!block)
@@ -367,6 +370,8 @@ async function main(commandLine)
 
 commander
     .version('0.1.0')
+    .option('--url <url>', 'full JSON-RPC endpoint URL (overrides --client/--port)')
+    .option('--delay <ms>', 'delay between block iterations in milliseconds (default: 1000)', parseInt)
     .option('--client <client>', 'ethereum client', 'localhost')
     .option('--port <port>', 'ethereum client rpc port', parseInt)
     .option('--block-start <block>', 'block number scan start', parseInt)

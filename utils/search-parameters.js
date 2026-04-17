@@ -30,8 +30,10 @@
 
 function SearchParameters()
 {
+    this.url = null;
     this.client = null;
     this.port = null;
+    this.delay = null;
 
     this.blockStart = null;
     this.blockEnd = null;

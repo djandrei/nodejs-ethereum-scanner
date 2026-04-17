@@ -33,9 +33,9 @@ const fileSystem = require('fs');
 
 var contractsUtils = 
 {
-    getProvider: function(client, port)
+    getProvider: function(url)
     {
-        let provider = new ethers.providers.JsonRpcProvider('http://' + client + ':' + port);
+        let provider = new ethers.providers.JsonRpcProvider(url);
 
         return provider;
     },

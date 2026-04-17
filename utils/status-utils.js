@@ -36,46 +36,55 @@ const NetworkState = require('./network-state.js');
 
 var statusUtils = 
 {
-    retrieveNetworkState: async function(client, port, password)
+    retrieveNetworkState: async function(url, password)
     {
         let networkState = new NetworkState();
 
-        let provider = contractUtils.getProvider(client, port);
-    
+        let provider = contractUtils.getProvider(url);
+
         let network = await provider.getNetwork();
         let blockNumber = await provider.getBlockNumber();
         let block = await provider.getBlock();
         let blockGasLimit = block.gasLimit;
 
-        let deployer = 0;
-        let wallet = 1;
-    
-        let deployerSigner = provider.getSigner(deployer);
-        let walletSigner = provider.getSigner(wallet);
+        let deployerSigner = null;
+        let walletSigner = null;
+        let deployerAddress = null;
+        let walletAddress = null;
 
-        if (!password)
+        try
         {
-            printUtils.printToConsole('signer', 20, 'no password provided');
-        }
-        else
-        {
-            let deployerUnlocked = await deployerSigner.unlock(password);
-            if (!deployerUnlocked)
+            deployerSigner = provider.getSigner(0);
+            walletSigner = provider.getSigner(1);
+
+            if (!password)
             {
-                printUtils.printToConsole('signer', 20, 'failed to unlock deployer');
-                process.exit();
+                printUtils.printToConsole('signer', 20, 'no password provided');
+            }
+            else
+            {
+                let deployerUnlocked = await deployerSigner.unlock(password);
+                if (!deployerUnlocked)
+                {
+                    printUtils.printToConsole('signer', 20, 'failed to unlock deployer');
+                    process.exit();
+                }
+
+                let walletUnlocked = await walletSigner.unlock(password);
+                if (!walletUnlocked)
+                {
+                    printUtils.printToConsole('signer', 20, 'failed to unlock wallet');
+                    process.exit();
+                }
             }
 
-            let walletUnlocked = await walletSigner.unlock(password);
-            if (!walletUnlocked)
-            {
-                printUtils.printToConsole('signer', 20, 'failed to unlock wallet');
-                process.exit();
-            }
+            deployerAddress = await deployerSigner.getAddress();
+            walletAddress = await walletSigner.getAddress();
         }
-    
-        let deployerAddress = await deployerSigner.getAddress();
-        let walletAddress = await walletSigner.getAddress();
+        catch(e)
+        {
+            printUtils.printToConsole('signer', 20, 'accounts not available (read-only provider)');
+        }
 
         networkState.provider = provider;
         networkState.networkName = network.name;
