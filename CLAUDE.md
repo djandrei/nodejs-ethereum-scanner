@@ -38,6 +38,17 @@ module.exports = async function(match, provider) {
 };
 ```
 
+Other scanner options:
+- `--client <name>` — host used to build the RPC URL when `--url` is not given (default: `localhost`, combined with `--port` as `http://<client>:<port>`).
+- `--block-end <block>` — end of the scan range; if omitted, defaults to the current network block number.
+- `--query-file <file>` — read the query from a file instead of `--query` (mutually exclusive with `--query`).
+- `--search-creation` / `--search-runtime` — match against the creation transaction data and/or the deployed runtime bytecode. If neither is given, `--search-runtime` is used by default.
+- `--balance` — only report contracts with a non-zero balance.
+- `--output-file <file>` — write matches to a JSON array file (see Output file format below).
+- `--status` — print per-block progress during the scan.
+- `--verbose` — print full transaction/receipt/bytecode data during the scan.
+- `--summary` — print a summary of all matches at the end (requires `--output-file`).
+
 Run the hex utility (generates function signatures/keccak256 hashes):
 ```
 ./hex --input 'transfer(address,uint256)'
