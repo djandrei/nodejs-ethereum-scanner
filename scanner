@@ -40,6 +40,15 @@ const statusUtils = require('./utils/status-utils.js');
 const SearchParameters = require('./utils/search-parameters.js');
 const SearchUtils = require('./utils/search-utils.js');
 
+// Wrap an --on-match substituted value in POSIX single quotes so that
+// on-chain / RPC-sourced data can never be reinterpreted as shell syntax.
+// Inside single quotes every character is literal; the only thing that needs
+// escaping is the single quote itself (close, escaped quote, reopen).
+function shellQuote(value)
+{
+    return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
 function validateCommandLine(commandLine)
 {
     // validate input parameters 
@@ -358,7 +367,7 @@ async function main(commandLine)
                                 {
                                     const cmd = searchParameters.onMatch.replace(
                                         /\{(\w+)\}/g,
-                                        (_, key) => (matchData[key] !== undefined ? String(matchData[key]) : '')
+                                        (_, key) => shellQuote(matchData[key] !== undefined ? String(matchData[key]) : '')
                                     );
                                     childProcess.exec(cmd, (err, stdout, stderr) => {
                                         if (err) console.error('on-match error:', err.message);
