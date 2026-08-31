@@ -297,7 +297,7 @@ async function main(commandLine)
                         let contractBalance = await networkState.provider.getBalance(contractAddress);
                         let contractBytecode = await networkState.provider.getCode(contractAddress);
 
-                        if (0 != contractBalance || (0 == contractBalance && !searchParameters.balance))
+                        if (!contractBalance.isZero() || !searchParameters.balance)
                         {
                             if (searchParameters.verbose)
                             {
