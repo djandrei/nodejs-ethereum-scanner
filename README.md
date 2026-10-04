@@ -2,6 +2,14 @@
 
 The ethereum scanner is a free and open-source tool for contract exploration and discovery. The scanner supports regular expression queries that allow discovery of smart contracts with complex EVM patterns.
 
+### Installation
+
+```
+$ npm install
+```
+
+The scanner connects to any Ethereum JSON-RPC endpoint: a local node via `--port` (and optionally `--client`), or a public provider such as Infura or Alchemy via `--url`.
+
 ### Known issues
 
 If using an ethereum client that does not run in full sync mode, there are some things you should be aware of:
@@ -30,21 +38,25 @@ $ ./scanner --help
 Usage: scanner [options]
 
 Options:
-  -V, --version          output the version number
-  --client <client>      ethereum client (default: "localhost")
-  --port <port>          ethereum client rpc port
-  --block-start <block>  block number scan start
-  --block-end <block>    block number scan end
-  --query <query>        query to execute
-  --query-file <file>    file with query to execute
-  --search-creation      search the data on the creation transaction
-  --search-runtime       search the contract bytecode
-  --balance              search only for contracts with non-zero balance
-  --output-file <file>   file with list of contracts that matched the search criteria
-  --status               displays status info during the scan
-  --verbose              displays contract data during the scan
-  --summary              displays summary at the end of the scan
-  -h, --help             output usage information
+  -V, --version           output the version number
+  --url <url>             full JSON-RPC endpoint URL (overrides --client/--port)
+  --delay <ms>            delay between block iterations in milliseconds (default: 1000)
+  --client <client>       ethereum client (default: "localhost")
+  --port <port>           ethereum client rpc port
+  --block-start <block>   block number scan start
+  --block-end <block>     block number scan end
+  --query <query>         query to execute
+  --query-file <file>     file with query to execute
+  --search-creation       search the data on the creation transaction
+  --search-runtime        search the contract bytecode
+  --balance               search only for contracts with non-zero balance
+  --output-file <file>    file with list of contracts that matched the search criteria
+  --status                displays status info during the scan
+  --verbose               displays contract data during the scan
+  --summary               displays summary at the end of the scan
+  --on-match <command>    shell command to run on each match; use {field} tokens
+  --action-script <file>  JS module exporting async function onMatch(match, provider)
+  -h, --help              output usage information
 ```
 Simple scan using a function signature in the query.
 ```
@@ -58,6 +70,28 @@ Scan with a function signature and a hexadecimal string.
 ```
 $ ./scanner --port 8545 --block-start 1 --block-end 1000 --query '<<transfer(address,uint256)>> && ! <<0x21[0-9]{4}3131>>'
 ```
+Scan against a public provider instead of a local node.
+```
+$ ./scanner --url https://mainnet.infura.io/v3/<key> --block-start 1 --block-end 1000 --query '<<transfer(address,uint256)>>'
+```
+Slow down the scan to 2 seconds between blocks (default is 1000 ms), useful for rate-limited providers.
+```
+$ ./scanner --url https://mainnet.infura.io/v3/<key> --block-start 1 --block-end 1000 --delay 2000 --query '<<transfer(address,uint256)>>'
+```
+Run a shell command on each match. `{field}` tokens are substituted with the match data; available tokens are `{blockNumber}`, `{transactionHash}`, `{contractAddress}`, `{ownerAddress}`, `{transactionNonce}`, `{transactionValue}`, `{contractBalance}`, `{transactionData}` and `{contractBytecode}`.
+```
+$ ./scanner --port 8545 --block-start 1 --block-end 1000 --query '<<transfer(address,uint256)>>' --on-match 'echo {contractAddress} {blockNumber}'
+```
+Call a JavaScript module on each match. The module's default export receives the match object (same fields as the tokens above) and the live `ethers.providers.JsonRpcProvider` instance.
+```
+$ ./scanner --port 8545 --block-start 1 --block-end 1000 --query '<<transfer(address,uint256)>>' --action-script ./my-action.js
+```
+```js
+// my-action.js
+module.exports = async function(match, provider) {
+    console.log(match.contractAddress, match.blockNumber);
+};
+```
 Scan and display a summary.
 ```
 $ ./scanner --port 8545 --block-start 1 --block-end 1000 --output-file 'scan-output.json' --summary --query '<<transfer(address,uint256)>>'
@@ -67,8 +101,8 @@ Example of a simple scan output.
 $ ./scanner --port 14545 --block-start 7264275 --block-end 7264290 --query '<<transfer(address,uint256)>>' --output-file './scan-outputs/scan-20190227-2318.json' --status --summary --search-creation
 
 
-client                    localhost
-port                      14545
+url                       http://localhost:14545
+delay (ms)                1000
 block start               7264275
 block end                 7264290
 query                     <<transfer(address,uint256)>>
@@ -76,6 +110,7 @@ search creation bytecode  true
 search runtime bytecode   false
 displays status during scan
 displays summary at the end of the scan
+output file               ./scan-outputs/scan-20190227-2318.json
 
 
 signer              no password provided
