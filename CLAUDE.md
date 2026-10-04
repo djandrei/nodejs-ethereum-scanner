@@ -26,6 +26,8 @@ Run the scanner:
 ```
 Available tokens: `{blockNumber}`, `{transactionHash}`, `{contractAddress}`, `{ownerAddress}`, `{transactionNonce}`, `{transactionValue}`, `{contractBalance}`, `{transactionData}`, `{contractBytecode}`.
 
+Each substituted value is wrapped in POSIX single quotes before the command is passed to `/bin/sh`, so on-chain data can never be interpreted as shell syntax. Do not add your own quotes around a token; `{contractAddress}` already expands to a single quoted argument.
+
 `--action-script <file>` loads a JS module and calls its default export on each match:
 ```
 ./scanner ... --action-script ./my-action.js
