@@ -190,9 +190,9 @@ function validateCommandLine(commandLine)
         printUtils.printToConsole('displays summary at the end of the scan', 1, '');
     }
 
-    if (searchParameters.output)
+    if (searchParameters.outputFile)
     {
-        printUtils.printToConsole('output file', 26, searchParameters.output);
+        printUtils.printToConsole('output file', 26, searchParameters.outputFile);
     }
     if (searchParameters.onMatch)
     {
